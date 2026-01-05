@@ -8,51 +8,80 @@ router.post("/", async (req, res) => {
   try {
     const { items } = req.body;
 
-    if (!items || !Array.isArray(items)) {
-      return res.status(400).json({ message: "Items array required" });
-    }
-
-    let total = 0;
-    let billItems: any[] = [];
+    const billItems: any[] = [];
+    let grandTotal = 0;
 
     for (const cartItem of items) {
       const item = await Item.findById(cartItem.itemId);
       if (!item) continue;
 
-      let quantityToPay = cartItem.quantity;
+      const qty = cartItem.quantity;
+      const originalTotal = item.price * qty;
 
-const offer = await Offer.findOne({ item: item._id })
-  .sort({ priority: -1 });
+      let discount = 0;
+      let finalTotal = originalTotal;
+      let offerApplied = "None";
+      let freeQty = 0;
 
-if (
-  offer &&
-  offer.type === "BUY_X_GET_Y" &&
-  offer.buyQty &&
-  offer.freeQty
-) {
-  const sets = Math.floor(
-    cartItem.quantity / (offer.buyQty + offer.freeQty)
-  );
-  const freeItems = sets * offer.freeQty;
-  quantityToPay = cartItem.quantity - freeItems;
-}
+      // 🔥 FETCH OFFERS FOR ITEM
+      const offers = await Offer.find({
+        item: item._id,
+        active: true,
+      }).sort({ priority: 1 });
 
-      const itemTotal = quantityToPay * item.price;
-      total += itemTotal;
+      if (offers.length > 0) {
+        const offer = offers[0]; // apply ONLY ONE offer
+
+        // ✅ BUY X GET Y
+        if (
+          offer.type === "BUY_X_GET_Y" &&
+          offer.buyQty &&
+          qty >= offer.buyQty
+        ) {
+          freeQty = Math.floor(qty / offer.buyQty) * (offer.freeQty || 0);
+          offerApplied = `Buy ${offer.buyQty} Get ${offer.freeQty} Free`;
+        }
+
+        // ✅ PERCENTAGE DISCOUNT
+        else if (
+          offer.type === "PERCENTAGE" &&
+          offer.discountPercent
+        ) {
+          discount = (originalTotal * offer.discountPercent) / 100;
+          finalTotal = originalTotal - discount;
+          offerApplied = `${offer.discountPercent}% OFF`;
+        }
+
+        // ✅ QTY DISCOUNT
+        else if (
+          offer.type === "QTY_DISCOUNT" &&
+          offer.minQty &&
+          offer.discountPercent &&
+          qty >= offer.minQty
+        ) {
+          discount = (originalTotal * offer.discountPercent) / 100;
+          finalTotal = originalTotal - discount;
+          offerApplied = `Buy ${offer.minQty}+ Get ${offer.discountPercent}% OFF`;
+        }
+      }
+
+      grandTotal += finalTotal;
 
       billItems.push({
         name: item.name,
-        price: item.price,
-        quantity: cartItem.quantity,
-        payableQuantity: quantityToPay,
-        itemTotal
+        quantity: qty,
+        originalTotal,
+        discount,
+        freeQty,
+        finalTotal,
+        offerApplied,
       });
     }
 
-    res.json({ items: billItems, totalAmount: total });
-
-  } catch (error) {
-    res.status(500).json({ message: "Billing error", error });
+    res.json({ items: billItems, grandTotal });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Billing failed" });
   }
 });
 

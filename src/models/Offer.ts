@@ -1,32 +1,31 @@
-import mongoose, { Schema, Types } from "mongoose";
+import mongoose from "mongoose";
 
-export interface IOffer {
-  item: Types.ObjectId;
-  type: string;
-  buyQty?: number;
-  freeQty?: number;
-  discountPercent?: number;
-  priority: number;
-}
+const OfferSchema = new mongoose.Schema(
+  {
+    item: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Item",
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["PERCENTAGE", "QTY_DISCOUNT", "BUY_X_GET_Y"],
+      required: true,
+    },
+    minQty: Number,
+    discountPercent: Number,
+    buyQty: Number,
+    freeQty: Number,
+    priority: {
+      type: Number,
+      default: 1,
+    },
+    active: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { timestamps: true }
+);
 
-const OfferSchema = new Schema<IOffer>({
-  item: {
-    type: Schema.Types.ObjectId,
-    ref: "Item",
-    required: true,
-  },
-  type: {
-    type: String,
-    required: true,
-  },
-  buyQty: Number,
-  freeQty: Number,
-  discountPercent: Number,
-  priority: {
-    type: Number,
-    default: 0,
-  },
-});
-
-const Offer = mongoose.model<IOffer>("Offer", OfferSchema);
-export default Offer;
+export default mongoose.model("Offer", OfferSchema);
